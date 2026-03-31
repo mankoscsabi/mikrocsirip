@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/publish/
+**/.vs/
+**/appsettings.Development.json
+**/appsettings.Production.json
+Dockerfile
+.dockerignore

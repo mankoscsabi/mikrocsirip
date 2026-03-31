@@ -1,0 +1,71 @@
+name: Deploy MikroCsirip to Azure
+
+on:
+ push:
+ branches: [main]
+ workflow_dispatch:
+
+env:
+ AZURE_WEBAPP_NAME: mikrocsirip-api
+ DOTNET_VERSION: '8.0.x'
+ NODE_VERSION: '20.x'
+
+jobs:
+ build-and-deploy-backend:
+ name: Backend – Build & Deploy
+ runs-on: ubuntu-latest
+ steps:
+ - uses: actions/checkout@v4
+
+ - name: Setup .NET
+ uses: actions/setup-dotnet@v4
+ with:
+ dotnet-version: ${{ env.DOTNET_VERSION }}
+
+ - name: Restore & Build
+ run: |
+ cd backend/MikroCsirip
+ dotnet restore
+ dotnet build -c Release --no-restore
+
+ - name: Publish
+ run: |
+ cd backend/MikroCsirip
+ dotnet publish -c Release -o ./publish
+
+ - name: Deploy to Azure Web App
+ uses: azure/webapps-deploy@v3
+ with:
+ app-name: ${{ env.AZURE_WEBAPP_NAME }}
+ publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+ package: backend/MikroCsirip/publish
+
+ build-and-deploy-frontend:
+ name: Frontend – Build & Deploy
+ runs-on: ubuntu-latest
+ steps:
+ - uses: actions/checkout@v4
+
+ - name: Setup Node.js
+ uses: actions/setup-node@v4
+ with:
+ node-version: ${{ env.NODE_VERSION }}
+ cache: 'npm'
+ cache-dependency-path: frontend/package-lock.json
+
+ - name: Install & Build
+ run: |
+ cd frontend
+ npm ci
+ npx ng build --configuration production
+ env:
+ API_URL: ${{ secrets.API_URL }}
+
+ - name: Deploy to Azure Static Web Apps
+ uses: Azure/static-web-apps-deploy@v1
+ with:
+ azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+ repo_token: ${{ secrets.GITHUB_TOKEN }}
+ action: upload
+ app_location: frontend
+ output_location: dist/mikrocsirip-frontend/browser

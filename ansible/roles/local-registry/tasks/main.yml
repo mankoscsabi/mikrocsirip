@@ -1,0 +1,75 @@
+---
+# MicroK8s beepitett registry hasznalata (localhost:32000)
+
+- name: MicroK8s registry addon ellenorzese
+  shell: microk8s status | grep -q "registry" && echo "enabled" || echo "disabled"
+  register: registry_status
+  changed_when: false
+
+- name: MicroK8s registry addon bekapcsolasa
+  shell: microk8s enable registry
+  when: registry_status.stdout == "disabled"
+  changed_when: true
+
+- name: Registry host beallitasa
+  set_fact:
+  registry_host_internal: "localhost:32000"
+
+- name: Docker insecure registry beallitasa MicroK8s-hez
+  shell: |
+  if ! grep -q "32000" /etc/docker/daemon.json 2>/dev/null; then
+  echo '{"insecure-registries":["localhost:32000","127.0.0.1:32000"]}' | \
+  sudo tee /etc/docker/daemon.json > /dev/null
+  sudo systemctl restart docker
+  sleep 5
+  sudo chmod 666 /var/run/docker.sock
+  fi
+  changed_when: false
+
+- name: Docker socket jogosultsag
+  shell: sudo chmod 666 /var/run/docker.sock
+  changed_when: false
+
+- name: Registry ellenorzese
+  uri:
+  url: "http://localhost:32000/v2/"
+  method: GET
+  register: registry_resp
+  until: registry_resp.status == 200
+  retries: 15
+  delay: 5
+
+- name: Backend Docker image build
+  command: >
+  docker build
+  -t {{ registry_host_internal }}/mikrocsirip-api:{{ image_tag }}
+  -f {{ project_root }}/backend/MikroCsirip/Dockerfile
+  {{ project_root }}/backend/MikroCsirip/
+  changed_when: true
+
+- name: Backend image push
+  command: docker push {{ registry_host_internal }}/mikrocsirip-api:{{ image_tag }}
+  changed_when: true
+
+- name: Frontend Docker image build
+  command: >
+  docker build
+  -t {{ registry_host_internal }}/mikrocsirip-frontend:{{ image_tag }}
+  -f {{ project_root }}/frontend/Dockerfile
+  {{ project_root }}/frontend/
+  changed_when: true
+
+- name: Frontend image push
+  command: docker push {{ registry_host_internal }}/mikrocsirip-frontend:{{ image_tag }}
+  changed_when: true
+
+- name: Registry host fact mentese
+  set_fact:
+  registry_host: "{{ registry_host_internal }}"
+  cacheable: true
+
+- name: Image-ek kiirasa
+  debug:
+  msg:
+  - "OK {{ registry_host_internal }}/mikrocsirip-api:{{ image_tag }}"
+  - "OK {{ registry_host_internal }}/mikrocsirip-frontend:{{ image_tag }}"

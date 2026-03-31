@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mikrocsirip-api
+  labels:
+    app: mikrocsirip-api
+spec:
+  replicas: {{ api_replicas }}
+  selector:
+    matchLabels:
+      app: mikrocsirip-api
+  template:
+    metadata:
+      labels:
+        app: mikrocsirip-api
+    spec:
+      containers:
+        - name: api
+          image: {{ registry_host }}/mikrocsirip-api:{{ image_tag }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: ASPNETCORE_URLS
+              value: "http://+:8080"
+            - name: ConnectionStrings__DefaultConnection
+              valueFrom:
+                secretKeyRef:
+                  name: mikrocsirip-secrets
+                  key: db-connection-string
+            - name: Jwt__Key
+              valueFrom:
+                secretKeyRef:
+                  name: mikrocsirip-secrets
+                  key: jwt-key
+            - name: Jwt__Issuer
+              value: "{{ jwt_issuer }}"
+            - name: Jwt__Audience
+              value: "{{ jwt_audience }}"
+            - name: AllowedOrigin
+              value: "http://localhost:{{ frontend_port }}"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mikrocsirip-api-svc
+spec:
+  selector:
+    app: mikrocsirip-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

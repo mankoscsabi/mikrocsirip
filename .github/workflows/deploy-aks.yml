@@ -1,0 +1,98 @@
+name: MikroCsirip – Build & Deploy AKS
+
+on:
+ push:
+ branches: [main]
+ workflow_dispatch:
+ inputs:
+ image_tag:
+ description: 'Image tag (pl. v1.0.0)'
+ required: false
+ default: 'latest'
+
+env:
+ ACR_NAME: mikrocsiripacr
+ AKS_CLUSTER: mikrocsirip-aks
+ RESOURCE_GROUP: mikrocsirip-rg
+ NAMESPACE: mikrocsirip
+ IMAGE_TAG: ${{ github.event.inputs.image_tag || github.sha }}
+
+jobs:
+ build-and-push:
+ name: Build & Push Docker images
+ runs-on: ubuntu-latest
+ outputs:
+ image_tag: ${{ env.IMAGE_TAG }}
+
+ steps:
+ - uses: actions/checkout@v4
+
+ - name: Azure bejelentkezés
+ uses: azure/login@v1
+ with:
+ creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+ - name: ACR bejelentkezés
+ run: az acr login --name ${{ env.ACR_NAME }}
+
+ - name: Backend image build & push
+ run: |
+ az acr build \
+ --registry ${{ env.ACR_NAME }} \
+ --image mikrocsirip-api:${{ env.IMAGE_TAG }} \
+ --file backend/MikroCsirip/Dockerfile \
+ backend/MikroCsirip/
+
+ - name: Frontend image build & push
+ run: |
+ az acr build \
+ --registry ${{ env.ACR_NAME }} \
+ --image mikrocsirip-frontend:${{ env.IMAGE_TAG }} \
+ --file frontend/Dockerfile \
+ frontend/
+
+ deploy:
+ name: Deploy to AKS
+ runs-on: ubuntu-latest
+ needs: build-and-push
+ environment: production
+
+ steps:
+ - uses: actions/checkout@v4
+
+ - name: Azure bejelentkezés
+ uses: azure/login@v1
+ with:
+ creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+ - name: AKS kubectl konfig
+ run: |
+ az aks get-credentials \
+ --resource-group ${{ env.RESOURCE_GROUP }} \
+ --name ${{ env.AKS_CLUSTER }}
+
+ - name: ACR login server lekérése
+ id: acr
+ run: |
+ echo "login_server=$(az acr show --name ${{ env.ACR_NAME }} --query loginServer -o tsv)" >> $GITHUB_OUTPUT
+
+ - name: Image tag frissítése a manifestekben
+ run: |
+ sed -i "s|REGISTRY|${{ steps.acr.outputs.login_server }}|g" k8s/base/api-deployment.yaml
+ sed -i "s|REGISTRY|${{ steps.acr.outputs.login_server }}|g" k8s/base/frontend-deployment.yaml
+ sed -i "s|latest|${{ env.IMAGE_TAG }}|g" k8s/base/api-deployment.yaml
+ sed -i "s|latest|${{ env.IMAGE_TAG }}|g" k8s/base/frontend-deployment.yaml
+
+ - name: Kubernetes deploy
+ run: kubectl apply -k k8s/base/ --namespace ${{ env.NAMESPACE }}
+
+ - name: Rollout várakozás
+ run: |
+ kubectl rollout status deployment/mikrocsirip-api -n ${{ env.NAMESPACE }}
+ kubectl rollout status deployment/mikrocsirip-frontend -n ${{ env.NAMESPACE }}
+
+ - name: Deploy összefoglaló
+ run: |
+ echo " Deploy kész!"
+ kubectl get pods -n ${{ env.NAMESPACE }}
+ kubectl get ingress -n ${{ env.NAMESPACE }}

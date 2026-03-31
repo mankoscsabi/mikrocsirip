@@ -1,0 +1,260 @@
+---
+# SQL Server futtatása Kubernetes podként, perzisztens tárolással
+
+- name: PersistentVolumeClaim létrehozása az SQL adatoknak
+  shell: |
+    microk8s kubectl apply --validate=false -n {{ k8s_namespace }} -f - << PVCEOF
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: mikrocsirip-mssql-pvc
+      namespace: {{ k8s_namespace }}
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+    PVCEOF
+  changed_when: true
+
+- name: SQL Server Deployment és Service alkalmazása
+  shell: |
+    microk8s kubectl apply --validate=false -n {{ k8s_namespace }} -f - << K8SEOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: mikrocsirip-mssql
+      namespace: {{ k8s_namespace }}
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: mikrocsirip-mssql
+      template:
+        metadata:
+          labels:
+            app: mikrocsirip-mssql
+        spec:
+          containers:
+            - name: mssql
+              image: mcr.microsoft.com/mssql/server:2022-latest
+              ports:
+                - containerPort: 1433
+              env:
+                - name: ACCEPT_EULA
+                  value: "Y"
+                - name: SA_PASSWORD
+                  value: "{{ sql_sa_password }}"
+                - name: MSSQL_COLLATION
+                  value: "Hungarian_CI_AS"
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+              volumeMounts:
+                - name: mssql-data
+                  mountPath: /var/opt/mssql
+              readinessProbe:
+                exec:
+                  command:
+                    - /bin/bash
+                    - -c
+                    - "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P '{{ sql_sa_password }}' -C -Q 'SELECT 1'"
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                failureThreshold: 10
+          volumes:
+            - name: mssql-data
+              persistentVolumeClaim:
+                claimName: mikrocsirip-mssql-pvc
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: mikrocsirip-mssql-svc
+      namespace: {{ k8s_namespace }}
+    spec:
+      selector:
+        app: mikrocsirip-mssql
+      ports:
+        - port: 1433
+          targetPort: 1433
+      type: ClusterIP
+    K8SEOF
+  changed_when: true
+
+- name: Várakozás az SQL Server pod indulására
+  command: >
+    microk8s kubectl rollout status deployment/mikrocsirip-mssql
+    --namespace {{ k8s_namespace }}
+    --timeout=300s
+  changed_when: false
+
+- name: Várakozás az SQL Server readiness-re
+  shell: |
+    SQL_POD=$(microk8s kubectl get pod -n {{ k8s_namespace }} \
+      -l app=mikrocsirip-mssql \
+      -o jsonpath='{.items[0].metadata.name}')
+    microk8s kubectl exec -n {{ k8s_namespace }} $SQL_POD -- \
+      /opt/mssql-tools18/bin/sqlcmd \
+      -S localhost -U sa -P "{{ sql_sa_password }}" -C -Q "SELECT 1"
+  register: sql_ready
+  until: sql_ready.rc == 0
+  retries: 20
+  delay: 10
+  changed_when: false
+
+- name: Adatbázis létrehozása
+  shell: |
+    SQL_POD=$(microk8s kubectl get pod -n {{ k8s_namespace }} \
+      -l app=mikrocsirip-mssql \
+      -o jsonpath='{.items[0].metadata.name}')
+    microk8s kubectl exec -n {{ k8s_namespace }} $SQL_POD -- \
+      /opt/mssql-tools18/bin/sqlcmd \
+      -S localhost -U sa -P "{{ sql_sa_password }}" -C \
+      -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = '{{ sql_db_name }}')
+          BEGIN CREATE DATABASE {{ sql_db_name }} COLLATE Hungarian_CI_AS END"
+  changed_when: true
+
+- name: Adatbázis táblák létrehozása (EF migráció helyett)
+  shell: |
+    SQL_POD=$(microk8s kubectl get pod -n {{ k8s_namespace }} \
+      -l app=mikrocsirip-mssql \
+      -o jsonpath='{.items[0].metadata.name}')
+    microk8s kubectl exec -n {{ k8s_namespace }} $SQL_POD -- \
+      /opt/mssql-tools18/bin/sqlcmd \
+      -S localhost -U sa -P "{{ sql_sa_password }}" -C \
+      -d "{{ sql_db_name }}" \
+      -Q "
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Users')
+    BEGIN
+      CREATE TABLE Users (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Username NVARCHAR(50) NOT NULL UNIQUE,
+        Email NVARCHAR(100) NOT NULL UNIQUE,
+        PasswordHash NVARCHAR(MAX) NOT NULL,
+        Bio NVARCHAR(500) NULL,
+        AvatarUrl NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      );
+      CREATE TABLE Posts (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Content NVARCHAR(280) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UserId INT NOT NULL,
+        CONSTRAINT FK_Posts_Users FOREIGN KEY (UserId)
+          REFERENCES Users(Id) ON DELETE CASCADE
+      );
+      CREATE TABLE Follows (
+        FollowerId INT NOT NULL,
+        FollowingId INT NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        CONSTRAINT PK_Follows PRIMARY KEY (FollowerId, FollowingId),
+        CONSTRAINT FK_Follows_Follower FOREIGN KEY (FollowerId)
+          REFERENCES Users(Id),
+        CONSTRAINT FK_Follows_Following FOREIGN KEY (FollowingId)
+          REFERENCES Users(Id)
+      );
+      CREATE TABLE Likes (
+        UserId INT NOT NULL,
+        PostId INT NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        CONSTRAINT PK_Likes PRIMARY KEY (UserId, PostId),
+        CONSTRAINT FK_Likes_Posts FOREIGN KEY (PostId)
+          REFERENCES Posts(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_Likes_Users FOREIGN KEY (UserId)
+          REFERENCES Users(Id)
+      );
+      CREATE TABLE __EFMigrationsHistory (
+        MigrationId NVARCHAR(150) NOT NULL PRIMARY KEY,
+        ProductVersion NVARCHAR(32) NOT NULL
+      );
+      INSERT INTO __EFMigrationsHistory VALUES
+        ('20240101000000_InitialCreate', '8.0.0');
+      PRINT 'Tablak letrehozva';
+    END
+    ELSE
+      PRINT 'Tablak mar leteznek';
+    "
+  register: schema_result
+  changed_when: "'Tablak letrehozva' in schema_result.stdout"
+
+- name: Schema eredmeny
+  debug:
+    msg: "{{ schema_result.stdout_lines }}"
+
+- name: Node IP lekerdezese (AllowedOrigin-hoz)
+  shell: |
+    microk8s kubectl get nodes \
+      -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' \
+      2>/dev/null || echo "localhost"
+  register: node_ip_auto
+  changed_when: false
+
+- name: Effektív ingress IP beállítása
+  set_fact:
+    effective_ip: "{{ ingress_ip if ingress_ip is defined and ingress_ip != '' else node_ip_auto.stdout }}"
+
+- name: appsettings.json létrehozása
+  copy:
+    dest: "{{ project_root }}/backend/MikroCsirip/appsettings.json"
+    force: true
+    content: |
+      {
+        "ConnectionStrings": {
+          "DefaultConnection": "Server=mikrocsirip-mssql-svc,1433;Database={{ sql_db_name }};User Id=sa;Password={{ sql_sa_password }};TrustServerCertificate=True;"
+        },
+        "Jwt": {
+          "Key": "{{ jwt_key }}",
+          "Issuer": "{{ jwt_issuer }}",
+          "Audience": "{{ jwt_audience }}"
+        },
+        "AllowedOrigin": "http://{{ effective_ip }}",
+        "Logging": {
+          "LogLevel": {
+            "Default": "Information",
+            "Microsoft.AspNetCore": "Warning"
+          }
+        },
+        "AllowedHosts": "*"
+      }
+
+- name: Connection string beállítása
+  set_fact:
+    db_connection_string: "Server=mikrocsirip-mssql-svc,1433;Database={{ sql_db_name }};User Id=sa;Password={{ sql_sa_password }};TrustServerCertificate=True;"
+
+- name: Secret fájlok létrehozása
+  copy:
+    dest: "{{ item.dest }}"
+    content: "{{ item.content }}"
+    mode: '0600'
+  loop:
+    - dest: /tmp/mikrocsirip-db-conn.txt
+      content: "{{ db_connection_string }}"
+    - dest: /tmp/mikrocsirip-jwt.txt
+      content: "{{ jwt_key }}"
+
+- name: K8s Secret létrehozása
+  shell: |
+    microk8s kubectl create secret generic mikrocsirip-secrets \
+      --namespace {{ k8s_namespace }} \
+      --from-file=db-connection-string=/tmp/mikrocsirip-db-conn.txt \
+      --from-file=jwt-key=/tmp/mikrocsirip-jwt.txt \
+      --dry-run=client -o yaml | microk8s kubectl apply --validate=false -f -
+  changed_when: true
+
+- name: Ideiglenes fájlok törlése
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/mikrocsirip-db-conn.txt
+    - /tmp/mikrocsirip-jwt.txt
+
+- name: SQL Server kész
+  debug:
+    msg: "SQL Server fut K8s-ben: mikrocsirip-mssql-svc:1433 (adat perzisztens)"

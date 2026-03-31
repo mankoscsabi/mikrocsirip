@@ -1,0 +1,30 @@
+# Érzékeny konfigurációs fájlok
+backend/MikroCsirip/appsettings.json
+backend/MikroCsirip/appsettings.Development.json
+backend/MikroCsirip/appsettings.Production.json
+ansible/group_vars/local.yml
+
+# Build kimenet
+node_modules/
+dist/
+.angular/
+bin/
+obj/
+publish/
+deploy.zip
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ideiglenes fájlok
+/tmp/mikrocsirip-*.log
+
+# Szkriptek (tartalmaz tokent)
+git.sh
+fix-microk8s.sh

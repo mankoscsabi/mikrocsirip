@@ -1,0 +1,33 @@
+---
+# ansible/playbooks/teardown-local.yml
+# Lokális K8s erőforrások törlése
+
+- name: MikroCsirip – Lokális környezet törlése
+ hosts: localhost
+ connection: local
+ gather_facts: false
+
+ vars_files:
+ - ../group_vars/all.yml
+ - ../group_vars/local.yml
+
+ tasks:
+ - name: K8s namespace törlése
+ command: microk8s kubectl delete namespace {{ k8s_namespace }} --ignore-not-found=true
+ changed_when: true
+
+ - name: SQL Server konténer leállítása és törlése
+ command: docker rm -f {{ sql_container_name }}
+ register: rm_result
+ failed_when: rm_result.rc != 0 and 'No such container' not in rm_result.stderr
+ changed_when: rm_result.rc == 0
+
+ - name: Lokális registry törlése
+ command: docker rm -f mikrocsirip-registry
+ register: reg_result
+ failed_when: reg_result.rc != 0 and 'No such container' not in reg_result.stderr
+ changed_when: reg_result.rc == 0
+
+ - name: Kész
+ debug:
+ msg: " Lokális környezet törölve"

@@ -1,0 +1,26 @@
+---
+# Namespace és ConfigMap létrehozása
+# Secret NEM itt jön létre - azt a local-sql role csinálja
+# miután a db_connection_string fact be van állítva
+
+- name: Namespace alkalmazása
+  shell: |
+  microk8s kubectl create namespace {{ k8s_namespace }} \
+  --dry-run=client -o yaml | microk8s kubectl apply --validate=false -f -
+  changed_when: true
+  environment:
+  KUBECONFIG: "{{ ansible_env.HOME }}/.kube/config"
+
+- name: ConfigMap létrehozása
+  shell: |
+  microk8s kubectl create configmap mikrocsirip-config \
+  --namespace {{ k8s_namespace }} \
+  --from-literal=frontend-url="http://localhost:{{ frontend_port }}" \
+  --dry-run=client -o yaml | microk8s kubectl apply --validate=false -f -
+  changed_when: true
+  environment:
+  KUBECONFIG: "{{ ansible_env.HOME }}/.kube/config"
+
+- name: Namespace kész
+  debug:
+  msg: "OK Namespace {{ k8s_namespace }} kész"

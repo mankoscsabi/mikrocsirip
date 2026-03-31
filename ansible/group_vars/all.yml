@@ -1,0 +1,25 @@
+---
+# Globális Ansible változók
+
+project_name: mikrocsirip
+
+# Kubernetes
+k8s_namespace: "mikrocsirip"
+image_tag: "latest"
+api_image_name: "mikrocsirip-api"
+frontend_image_name: "mikrocsirip-frontend"
+
+# SQL Server
+sql_db_name: "mikrocsirip"
+sql_port: 1433
+
+# JWT
+jwt_issuer: "MikroCsirip"
+jwt_audience: "MikroCsiripUsers"
+
+# Replikák
+api_replicas: 1
+frontend_replicas: 1
+
+# Projekt gyökér
+project_root: "{{ playbook_dir }}/../.."
