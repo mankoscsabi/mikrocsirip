@@ -2,7 +2,7 @@
 
 Egy modern microblog platform Angular, .NET Core 8 és Microsoft SQL Server alapokon, Kubernetes alatt futtatható.
 
-## Technológiai stack
+## Tech stack
 
 | Reteg | Technologia |
 |-------|-------------|
@@ -20,7 +20,7 @@ Egy modern microblog platform Angular, .NET Core 8 és Microsoft SQL Server alap
 - Regisztráció és bejelentkezés JWT alapú autentikációval
 - Bejegyzések írása (max 280 karakter)
 - Like / unlike bejegyzéseken
-- Felhasználók követése / unfollow
+- Felhasználók követés
 - Feed (saját és követett felhasználók bejegyzései)
 - Felhasználói profiloldalak
 - Keresés felhasználók között
