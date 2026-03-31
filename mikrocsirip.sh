@@ -71,7 +71,7 @@ usage() {
  echo " pods - Podok allapota"
  echo " help - Ez a sugo"
  echo ""
- echo " GitHub:"
+ 
 
  echo ""
 }
