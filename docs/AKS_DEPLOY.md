@@ -164,15 +164,3 @@ az ad sp create-for-rbac \
 ```
 
 ---
-
-## Becsült havi költség (AKS)
-
-| Erőforrás | Méret | Ár |
-|-----------|-------|-----|
-| AKS (2x Standard_B2s) | 2 node | ~$60/hó |
-| Azure SQL | Basic | ~$5/hó |
-| Container Registry | Basic | ~$5/hó |
-| Load Balancer | Standard | ~$18/hó |
-| **Összesen** | | **~$88/hó** |
-
-> Olcsóbb alternatíva: 1 node + Standard_B1ms → ~$40/hó
