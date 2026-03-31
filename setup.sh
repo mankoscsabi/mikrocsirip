@@ -1,9 +1,4 @@
 #!/bin/bash
-# ============================================================
-# MikroCsirip - Telepito szkript
-# Ubuntu 22.04 / 24.04 LTS
-# Hasznalat: chmod +x setup.sh && ./setup.sh
-# ============================================================
 
 set -e
 
@@ -283,9 +278,9 @@ chmod +x "$HOME/start-mikrocsirip.sh"
 
 section "Telepites kesz!"
 echo ""
-echo -e " ${GREEN}Frontend : http://localhost:$FRONTEND_PORT${NC}"
-echo -e " ${GREEN}API : http://localhost:$API_PORT/api${NC}"
-echo -e " ${GREEN}Swagger : http://localhost:$API_PORT/swagger${NC}"
+echo -e " ${GREEN}Frontend : http://agepipje:$FRONTEND_PORT${NC}"
+echo -e " ${GREEN}API : http://agepipje:$API_PORT/api${NC}"
+echo -e " ${GREEN}Swagger : http://agepipje:$API_PORT/swagger${NC}"
 echo ""
 echo -e " Inditas: ${YELLOW}./mikrocsirip.sh start${NC}"
 echo -e " Leallitas: ${YELLOW}./mikrocsirip.sh stop${NC}"
