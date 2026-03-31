@@ -1,151 +1,87 @@
----
-- name: API Deployment manifest generálása
+- name: API Deployment manifest generalasa
   template:
-  src: api-deployment.yaml.j2
-  dest: /tmp/mikrocsirip-api-deployment.yaml
+    src: api-deployment.yaml.j2
+    dest: /tmp/mikrocsirip-api-deployment.yaml
 
-- name: Frontend Deployment manifest generálása
+- name: Frontend Deployment manifest generalasa
   template:
-  src: frontend-deployment.yaml.j2
-  dest: /tmp/mikrocsirip-frontend-deployment.yaml
+    src: frontend-deployment.yaml.j2
+    dest: /tmp/mikrocsirip-frontend-deployment.yaml
 
-- name: API Deployment alkalmazása
-  command: >
-  microk8s kubectl apply --validate=false
-  -f /tmp/mikrocsirip-api-deployment.yaml
-  --namespace {{ k8s_namespace }}
+- name: API Deployment alkalmazasa
+  shell: microk8s kubectl apply --validate=false -f /tmp/mikrocsirip-api-deployment.yaml --namespace {{ k8s_namespace }}
   changed_when: true
 
-- name: Frontend Deployment alkalmazása
-  command: >
-  microk8s kubectl apply --validate=false
-  -f /tmp/mikrocsirip-frontend-deployment.yaml
-  --namespace {{ k8s_namespace }}
+- name: Frontend Deployment alkalmazasa
+  shell: microk8s kubectl apply --validate=false -f /tmp/mikrocsirip-frontend-deployment.yaml --namespace {{ k8s_namespace }}
   changed_when: true
 
-- name: Ingress alkalmazása
-  shell: |
-  microk8s kubectl apply --validate=false -f - << INGRESSEOF
-  apiVersion: networking.k8s.io/v1
-  kind: Ingress
-  metadata:
-  name: mikrocsirip-ingress
-  namespace: {{ k8s_namespace }}
-  annotations:
-  nginx.ingress.kubernetes.io/rewrite-target: /
-  nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-  spec:
-  ingressClassName: nginx
-  rules:
-  - http:
-  paths:
-  - path: /api
-  pathType: Prefix
-  backend:
-  service:
-  name: mikrocsirip-api-svc
-  port:
-  number: 80
-  - path: /swagger
-  pathType: Prefix
-  backend:
-  service:
-  name: mikrocsirip-api-svc
-  port:
-  number: 80
-  - path: /health
-  pathType: Prefix
-  backend:
-  service:
-  name: mikrocsirip-api-svc
-  port:
-  number: 80
-  - path: /
-  pathType: Prefix
-  backend:
-  service:
-  name: mikrocsirip-frontend-svc
-  port:
-  number: 80
-  INGRESSEOF
+- name: Ingress alkalmazasa
+  shell: microk8s kubectl apply --validate=false -n {{ k8s_namespace }} -f {{ project_root }}/k8s/base/ingress.yaml
   changed_when: true
 
-- name: Várakozás az API rollout-ra
-  command: >
-  microk8s kubectl rollout status deployment/mikrocsirip-api
-  --namespace {{ k8s_namespace }}
-  --timeout=300s
+- name: Varakozas az API rollout-ra
+  shell: microk8s kubectl rollout status deployment/mikrocsirip-api --namespace {{ k8s_namespace }} --timeout=300s
   register: api_rollout
   changed_when: false
   failed_when: false
 
-- name: API pod állapot lekérése
-  command: microk8s kubectl get pods -n {{ k8s_namespace }} -l app=mikrocsirip-api -o wide
+- name: API pod allapot
+  shell: microk8s kubectl get pods -n {{ k8s_namespace }} -l app=mikrocsirip-api -o wide
   register: api_pods
   changed_when: false
 
-- name: API pod részletes állapot
+- name: API pod allapot kiirasa
   debug:
-  msg: "{{ api_pods.stdout_lines }}"
+    msg: "{{ api_pods.stdout_lines }}"
 
 - name: API pod events
   shell: |
-  POD=$(microk8s kubectl get pods -n {{ k8s_namespace }} -l app=mikrocsirip-api \
-  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-  if [ -n "$POD" ]; then
-  microk8s kubectl describe pod $POD -n {{ k8s_namespace }} | tail -20
-  fi
+    POD=$(microk8s kubectl get pods -n {{ k8s_namespace }} -l app=mikrocsirip-api \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$POD" ]; then
+      microk8s kubectl describe pod $POD -n {{ k8s_namespace }} | tail -20
+    fi
   register: api_events
   changed_when: false
   failed_when: false
 
-- name: API pod events kiírása
+- name: API pod events kiirasa
   debug:
-  msg: "{{ api_events.stdout_lines }}"
+    msg: "{{ api_events.stdout_lines }}"
   when: api_rollout.rc != 0
 
 - name: API pod logok
   shell: |
-  POD=$(microk8s kubectl get pods -n {{ k8s_namespace }} -l app=mikrocsirip-api \
-  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-  if [ -n "$POD" ]; then
-  microk8s kubectl logs $POD -n {{ k8s_namespace }} --tail=30 2>/dev/null || \
-  echo "Meg nem erhetok el a logok"
-  fi
+    POD=$(microk8s kubectl get pods -n {{ k8s_namespace }} -l app=mikrocsirip-api \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$POD" ]; then
+      microk8s kubectl logs $POD -n {{ k8s_namespace }} --tail=30 2>/dev/null || \
+        echo "Meg nem erhetok el a logok"
+    fi
   register: api_logs
   changed_when: false
   failed_when: false
 
-- name: API logok kiírása
+- name: API logok kiirasa
   debug:
-  msg: "{{ api_logs.stdout_lines }}"
+    msg: "{{ api_logs.stdout_lines }}"
   when: api_rollout.rc != 0
 
-- name: API rollout ellenőrzése
+- name: API rollout ellenorzese
   fail:
-  msg: "Az API pod nem indult el! Lásd a fenti logokat."
+    msg: "Az API pod nem indult el!"
   when: api_rollout.rc != 0
 
-- name: Várakozás a Frontend rollout-ra
-  command: >
-  microk8s kubectl rollout status deployment/mikrocsirip-frontend
-  --namespace {{ k8s_namespace }}
-  --timeout=300s
+- name: Varakozas a Frontend rollout-ra
+  shell: microk8s kubectl rollout status deployment/mikrocsirip-frontend --namespace {{ k8s_namespace }} --timeout=300s
   changed_when: false
 
-- name: Ingress IP lekérése
-  shell: |
-  microk8s kubectl get ingress mikrocsirip-ingress \
-  -n {{ k8s_namespace }} \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending"
-  register: ingress_ip
-  changed_when: false
-
-- name: Podok állapota
-  command: microk8s kubectl get pods -n {{ k8s_namespace }}
+- name: Podok allapota
+  shell: microk8s kubectl get pods -n {{ k8s_namespace }}
   register: pods_status
   changed_when: false
 
-- name: Podok listája
+- name: Podok listaja
   debug:
-  msg: "{{ pods_status.stdout_lines }}"
+    msg: "{{ pods_status.stdout_lines }}"
