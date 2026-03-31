@@ -119,5 +119,3 @@
           - "  Swagger  : http://{{ effective_ip }}/swagger"
           - "  Kezeles  : ./mikrocsirip.sh"
           - "========================================"
-PLAYEOF
-echo "Kész"
