@@ -54,7 +54,7 @@ Ubuntu 22.04 vagy 24.04 LTS, legalább 4 GB RAM, 20 GB szabad hely.
 ### Telepítés
 
 ```bash
-git clone https://github.com/FELHASZNALONEV/mikrocsirip.git
+git clone https://github.com/mankoscsabi/mikrocsirip.git
 cd mikrocsirip
 chmod +x mikrocsirip.sh
 ./mikrocsirip.sh install
