@@ -5,119 +5,119 @@
   gather_facts: false
 
   vars_files:
-  - ../group_vars/all.yml
-  - ../group_vars/local.yml
+    - ../group_vars/all.yml
+    - ../group_vars/local.yml
 
   pre_tasks:
-  - name: Docker ellenorzese
-  command: docker info
-  changed_when: false
+    - name: Docker ellenorzese
+      command: docker info
+      changed_when: false
 
-  - name: MicroK8s inditasa ha nem fut
-  shell: |
-  if ! microk8s status 2>/dev/null | grep -q "microk8s is running"; then
-  microk8s start
-  fi
-  changed_when: false
+    - name: MicroK8s inditasa ha nem fut
+      shell: |
+        if ! microk8s status 2>/dev/null | grep -q "microk8s is running"; then
+          microk8s start
+        fi
+      changed_when: false
 
-  - name: Varakozas a MicroK8s indulasara
-  shell: microk8s status --wait-ready --timeout 120
-  changed_when: false
+    - name: Varakozas a MicroK8s indulasara
+      shell: microk8s status --wait-ready --timeout 120
+      changed_when: false
 
-  - name: microk8s kubectl konfig frissitese
-  shell: |
-  mkdir -p ~/.kube
-  microk8s config > ~/.kube/config
-  changed_when: false
+    - name: kubectl konfig frissitese
+      shell: |
+        mkdir -p ~/.kube
+        microk8s config > ~/.kube/config
+      changed_when: false
 
-  - name: Frontend environment.prod.ts beallitasa
-  copy:
-  dest: "{{ project_root }}/frontend/src/environments/environment.prod.ts"
-  content: |
-  export const environment = {
-  production: true,
-  apiUrl: '/api'
-  };
+    - name: Node IP lekerdezese
+      shell: |
+        microk8s kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || echo "localhost"
+      register: node_ip_auto
+      changed_when: false
 
-  - name: Frontend Dockerfile javitasa npm install
-  replace:
-  path: "{{ project_root }}/frontend/Dockerfile"
-  regexp: 'npm ci --silent'
-  replace: 'npm install --silent'
+    - name: Effektiv ingress IP beallitasa
+      set_fact:
+        effective_ip: "{{ ingress_ip if ingress_ip is defined and ingress_ip != '' else node_ip_auto.stdout }}"
 
-  - name: Frontend Dockerfile javitasa browser mappa
-  replace:
-  path: "{{ project_root }}/frontend/Dockerfile"
-  regexp: 'dist/mikrocsirip-frontend/browser'
-  replace: 'dist/mikrocsirip-frontend'
+    - name: Frontend environment.prod.ts beallitasa
+      copy:
+        dest: "{{ project_root }}/frontend/src/environments/environment.prod.ts"
+        content: |
+          export const environment = {
+            production: true,
+            apiUrl: 'http://{{ effective_ip }}/api'
+          };
+
+    - name: Frontend Dockerfile javitasa npm install
+      replace:
+        path: "{{ project_root }}/frontend/Dockerfile"
+        regexp: 'npm ci --silent'
+        replace: 'npm install --silent'
+
+    - name: Frontend Dockerfile javitasa browser mappa
+      replace:
+        path: "{{ project_root }}/frontend/Dockerfile"
+        regexp: 'dist/mikrocsirip-frontend/browser'
+        replace: 'dist/mikrocsirip-frontend'
 
   roles:
-  - role: local-registry
-  tags: [registry]
-  - role: k8s-namespace
-  tags: [namespace]
-  - role: local-sql
-  tags: [sql]
-  - role: k8s-deploy
-  tags: [deploy]
+    - role: local-registry
+      tags: [registry]
+    - role: k8s-namespace
+      tags: [namespace]
+    - role: local-sql
+      tags: [sql]
+    - role: k8s-deploy
+      tags: [deploy]
 
   post_tasks:
-  - name: Deploy osszefoglalo
-  debug:
-  msg:
-  - "OK MikroCsirip sikeresen deploy-olva!"
-  - "Frontend : http://localhost:{{ frontend_port }}"
-  - "API : http://localhost:{{ api_port }}/api"
+    - name: Deploy osszefoglalo
+      debug:
+        msg:
+          - "MikroCsirip sikeresen deploy-olva!"
+          - "Frontend : http://{{ effective_ip }}"
+          - "API      : http://{{ effective_ip }}/api"
 
-- name: MikroCsirip - Port Forward
+- name: MikroCsirip - Ingress beallitasa
   hosts: localhost
   connection: local
   gather_facts: false
 
   vars_files:
-  - ../group_vars/all.yml
-  - ../group_vars/local.yml
+    - ../group_vars/all.yml
+    - ../group_vars/local.yml
 
   tasks:
-  - name: Regi port-forward leallitasa
-  shell: pkill -f "microk8s kubectl port-forward svc/mikrocsirip" 2>/dev/null || true
-  changed_when: false
-  ignore_errors: true
+    - name: MicroK8s ingress addon bekapcsolasa
+      shell: microk8s enable ingress
+      changed_when: false
+      ignore_errors: true
 
-  - name: Varakozas
-  pause:
-  seconds: 2
+    - name: Varakozas az ingress controlerre
+      pause:
+        seconds: 10
 
-  - name: Frontend port-forward
-  shell: |
-  nohup microk8s kubectl port-forward svc/mikrocsirip-frontend-svc {{ frontend_port }}:80 \
-  -n {{ k8s_namespace }} > /tmp/mikrocsirip-frontend-pf.log 2>&1 &
-  echo $!
-  environment:
-  KUBECONFIG: "{{ ansible_env.HOME }}/.kube/config"
-  changed_when: true
+    - name: Node IP lekerdezese
+      shell: |
+        microk8s kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || echo "localhost"
+      register: node_ip_auto
+      changed_when: false
 
-  - name: API port-forward
-  shell: |
-  nohup microk8s kubectl port-forward svc/mikrocsirip-api-svc {{ api_port }}:80 \
-  -n {{ k8s_namespace }} > /tmp/mikrocsirip-api-pf.log 2>&1 &
-  echo $!
-  environment:
-  KUBECONFIG: "{{ ansible_env.HOME }}/.kube/config"
-  changed_when: true
+    - name: Effektiv ingress IP beallitasa
+      set_fact:
+        effective_ip: "{{ ingress_ip if ingress_ip is defined and ingress_ip != '' else node_ip_auto.stdout }}"
 
-  - name: Varakozas indulasra
-  pause:
-  seconds: 3
-
-  - name: Vegeredmeny
-  debug:
-  msg:
-  - "========================================"
-  - " MikroCsirip elindult!"
-  - "========================================"
-  - " Frontend : http://localhost:{{ frontend_port }}"
-  - " API : http://localhost:{{ api_port }}/api"
-  - " Swagger : http://localhost:{{ api_port }}/swagger"
-  - " Kezeles : ./mikrocsirip.sh"
-  - "========================================"
+    - name: Vegeredmeny
+      debug:
+        msg:
+          - "========================================"
+          - "  MikroCsirip elindult!"
+          - "========================================"
+          - "  Frontend : http://{{ effective_ip }}"
+          - "  API      : http://{{ effective_ip }}/api"
+          - "  Swagger  : http://{{ effective_ip }}/swagger"
+          - "  Kezeles  : ./mikrocsirip.sh"
+          - "========================================"
+PLAYEOF
+echo "Kész"
