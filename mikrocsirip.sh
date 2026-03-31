@@ -139,9 +139,9 @@ start() {
 
  section "MikroCsirip elindult"
  echo ""
- echo -e " ${GREEN}Frontend : http://localhost:$FRONTEND_PORT${NC}"
- echo -e " ${GREEN}API : http://localhost:$API_PORT/api${NC}"
- echo -e " ${GREEN}Swagger : http://localhost:$API_PORT/swagger${NC}"
+ echo -e " ${GREEN}Frontend : http://ip:$FRONTEND_PORT${NC}"
+ echo -e " ${GREEN}API : http://ip:$API_PORT/api${NC}"
+ echo -e " ${GREEN}Swagger : http://ip:$API_PORT/swagger${NC}"
  echo ""
 }
 
@@ -214,7 +214,6 @@ pods() {
  microk8s kubectl get pods -n $NAMESPACE -o wide
 }
 
-# ── Fő logika ────────────────────────────────────────────────
 
 case "${1:-help}" in
  start) start ;;
