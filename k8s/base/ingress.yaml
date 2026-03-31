@@ -1,38 +1,38 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
- name: mikrocsirip-ingress
- namespace: mikrocsirip
+  name: mikrocsirip-ingress
+  namespace: mikrocsirip
 spec:
- ingressClassName: nginx
- rules:
- - http:
- paths:
- - path: /api
- pathType: Prefix
- backend:
- service:
- name: mikrocsirip-api-svc
- port:
- number: 80
- - path: /swagger
- pathType: Prefix
- backend:
- service:
- name: mikrocsirip-api-svc
- port:
- number: 80
- - path: /health
- pathType: Prefix
- backend:
- service:
- name: mikrocsirip-api-svc
- port:
- number: 80
- - path: /
- pathType: Prefix
- backend:
- service:
- name: mikrocsirip-frontend-svc
- port:
- number: 80
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: mikrocsirip-api-svc
+                port:
+                  number: 80
+          - path: /swagger
+            pathType: Prefix
+            backend:
+              service:
+                name: mikrocsirip-api-svc
+                port:
+                  number: 80
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: mikrocsirip-api-svc
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mikrocsirip-frontend-svc
+                port:
+                  number: 80
